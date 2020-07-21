@@ -10,10 +10,11 @@ import numpy as np
 
 class publicador:
     
-    def __init__(self, connection, nombre):
+    def __init__(self, connection_db_ventas, connection_db_inventario, nombre):
         #se crea el cliente 
         self.client = paho.mqtt.client.Client(nombre, False)
-        self.connection = connection
+        self.connection_db_ventas = connection_db_ventas
+        self.connection_db_inventario = connection_db_inventario
         self.activar_alarma_estante = False
         self.alarma_activada = 0
         
@@ -35,6 +36,51 @@ class publicador:
         print(payload)
         self.client.publish(sucursal+'/estantes/'+str(id_estante),json.dumps(payload),qos=2)
         time.sleep(0.5)
+
+    def enviar_mensaje_factura(self, sucur, no_cuenta, id_cliente, banco, sucursal, cont_factura, total, hora):
+        payload = {
+                "no_cuenta": no_cuenta,
+                "id_cliente": id_cliente,
+                "banco": banco,
+                "sucursal": sucursal,
+                "cont_factura": cont_factura,
+                "total": str(total),
+                "hora": str(hora)
+            }
+        self.client.publish(sucur+'/facturas',json.dumps(payload),qos=2)
+        time.sleep(0.5)
+
+    def enviar_mensaje_detalles(self, sucur, cont_factura, id_producto, cantidad, precio):
+        payload = {
+                "cont_factura": cont_factura,
+                "id_producto": id_producto,
+                "cantidad": cantidad,
+                "precio": precio
+            }
+        self.client.publish(sucur+'/detalles',json.dumps(payload),qos=2)
+        time.sleep(0.5)
+
+    def enviar_mensaje_clientes(self, sucur, id_cliente, nombre, apellido, telefono, direccion):
+        payload = {
+                "id_cliente": id_cliente,
+                "nombre": nombre,
+                "apellido": apellido,
+                "telefono": telefono,
+                "direccion": direccion
+            }
+        self.client.publish(sucur+'/clientes',json.dumps(payload),qos=2)
+        time.sleep(0.5)
+
+    def enviar_mensaje_visitas(self, sucur, no_visita, no_cuenta, id_cliente, sucursal, hora):
+        payload = {
+                "no_visita": no_visita,
+                "no_cuenta": no_cuenta,
+                "id_cliente": id_cliente,
+                "sucursal": sucursal,
+                "hora": str(hora)
+            }
+        self.client.publish(sucur+'/visitas',json.dumps(payload),qos=2)
+        time.sleep(0.5)
         
     def enviar_mensaje_sensor(self, sucursal, id_cliente, id_sucursal):
         payload = {
@@ -44,6 +90,35 @@ class publicador:
             }
         print(payload)
         self.client.publish(sucursal+'/sensores',json.dumps(payload),qos=2)
+        time.sleep(0.5)
+
+    def enviar_mensaje_llenar(self, sucur, id_estante, hora):
+        payload = {
+                "id_estante": id_estante,
+                "hora": str(hora)
+            }
+        print(payload)
+        self.client.publish(sucur+'/llenar',json.dumps(payload),qos=2)
+        time.sleep(0.5)
+
+    def enviar_mensaje_charcuteria(self, sucur, accion, id_cliente):
+        payload = {
+                "accion": accion,
+                "id_cliente": id_cliente
+            }
+        print(payload)
+        self.client.publish(sucur+'/charcuteria',json.dumps(payload),qos=2)
+        time.sleep(0.5)
+
+    def enviar_mensaje_fila(self, sucur, accion, no_fila, id_cliente, id_sucursal):
+        payload = {
+                "accion": accion,
+                "no_fila": no_fila,
+                "id_cliente": id_cliente,
+                "id_sucursal": id_sucursal
+            }
+        print(payload)
+        self.client.publish(sucur+'/charcuteria',json.dumps(payload),qos=2)
         time.sleep(0.5)
 
     def on_connect(self, client, userdata, flags, rc):    
@@ -79,141 +154,81 @@ class publicador:
         self.alarma_activada = a["id_cliente"]
         
     def verificar_cliente_programa(self, id_cliente):
-        cur = self.connection.cursor()
+        cur = self.connection_db_ventas.cursor()
         cur.execute("SELECT verificar_pertenece_programa(%s)", (id_cliente,))
-        self.connection.commit()
+        self.connection_db_ventas.commit()
         pertenece = cur.fetchone()[0]
         cur.close()
         return pertenece 
     
-    def guardar_visita(self, no_visita, no_cuenta, id_cliente, sucursal, hora):
-        if no_cuenta == 1:
-            cur = self.connection.cursor()
-            cur.execute("INSERT INTO visita(no_visita, no_cuenta, id_cliente, id_sucursal, fecha_hora) VALUES (%s, (SELECT no_cuenta FROM cuenta_programa_fidelidad WHERE id_cliente = %s), %s, %s, %s)", (no_visita, id_cliente, id_cliente, sucursal, hora,))
-            self.connection.commit()
-            cur.close()
-        else:
-            cur = self.connection.cursor()
-            cur.execute("INSERT INTO visita(no_visita, no_cuenta, id_cliente, id_sucursal, fecha_hora) VALUES (%s, (SELECT no_cuenta FROM cuenta_programa_fidelidad WHERE id_cliente = %s), %s, %s, %s)", (no_visita, no_cuenta, id_cliente, sucursal, hora,))
-            self.connection.commit()
-            cur.close()
-
     def pick_choice(self, lista):
         opciones = lista
         decision = random.choice(opciones)
         return decision
 
     def verificar_si_en_cola(self, id_cliente):
-        cur = self.connection.cursor()
+        cur = self.connection_db_ventas.cursor()
         cur.execute("SELECT verificar_cola(%s)", (id_cliente,))
-        self.connection.commit()
+        self.connection_db_ventas.commit()
         is_en_cola = cur.fetchone()[0]
         cur.close()
         return is_en_cola
-    
-    def borrar_de_charcuteria(self, id_cliente):
-        cur = self.connection.cursor()
-        cur.execute("DELETE FROM cliente_charcuteria WHERE id_cliente = %s", (id_cliente,))
-        self.connection.commit()
-        cur.close()
-
-    def actualizar_fila(self, id_cliente):
-        cur = self.connection.cursor()
-        cur.execute("UPDATE cliente_charcuteria SET no_fila = cliente_charcuteria.no_fila+1 WHERE id_sucursal = %s", (id_cliente,))
-        self.connection.commit()
-        cur.close()
 
     def elegir_producto(self, id_estante):
-        cur = self.connection.cursor()
+        cur = self.connection_db_inventario.cursor()
         cur.execute("SELECT nombre FROM producto_asignado AS A INNER JOIN producto AS P ON A.id_producto = P.id_producto WHERE id_estante = %s", (id_estante,))
-        self.connection.commit()
+        self.connection_db_inventario.commit()
         productos = cur.fetchall()
         cur.close()
         return productos
     
     def get_id_producto(self, producto):
-        cur = self.connection.cursor()
+        cur = self.connection_db_ventas.cursor()
         cur.execute("SELECT id_producto FROM producto WHERE nombre = %s", (producto,))
-        self.connection.commit()
+        self.connection_db_ventas.commit()
         id_producto = cur.fetchone()[0]
         cur.close()
         return id_producto
 
     def obtener_cantidad_restante(self, id_producto):
-        cur = self.connection.cursor()
+        cur = self.connection_db_inventario.cursor()
         cur.execute("SELECT cantidad_restante FROM producto_asignado WHERE id_producto = %s", (id_producto,))
-        self.connection.commit()
+        self.connection_db_inventario.commit()
         cant = cur.fetchone()[0]
         cur.close()
         return cant
 
     def obtener_precio(self, id_producto):
-        cur = self.connection.cursor()
+        cur = self.connection_db_ventas.cursor()
         cur.execute("SELECT precio FROM cambio_precio WHERE id_producto = %s", (id_producto,))
-        self.connection.commit()
+        self.connection_db_ventas.commit()
         precio = cur.fetchone()[0]
         cur.close()
         return precio
-    
-    def llenar_estante(self, id_estante, hora):
-        cur = self.connection.cursor()
-        cur.execute("SELECT llenar_estante(%s)", (id_estante, hora,))
-        self.connection.commit()
-        cur.close()
 
     def verificar_cliente(self, id_cliente):
-        cur = self.connection.cursor()
+        cur = self.connection_db_ventas.cursor()
         cur.execute("SELECT verificar_cliente(%s)", (id_cliente,))
-        self.connection.commit()
+        self.connection_db_ventas.commit()
         is_cliente = cur.fetchone()[0]
         cur.close()
         return is_cliente
 
-    def insertar_cliente(self, id_cliente, nombre, apellido, telefono, direccion):
-        cur = self.connection.cursor()
-        cur.execute("INSERT INTO cliente(id_cliente, nombre, apellido, telefono, direccion) VALUES (%s, %s, %s, %s, %s)", (id_cliente, nombre, apellido, telefono, direccion,))
-        self.connection.commit()
-        cur.close()
-
-    def insertar_en_fila(self, id_cliente, no_fila, id_sucursal):
-        cur = self.connection.cursor()
-        cur.execute("INSERT INTO cliente_charcuteria(id_cliente, no_fila, id_sucursal) VALUES (%s, %s, %s)", (id_cliente, no_fila, id_sucursal,))
-        self.connection.commit()
-        cur.close()
-
     def obtener_pasillos(self, sucursal):
-        cur = self.connection.cursor()
+        cur = self.connection_db_inventario.cursor()
         cur.execute("SELECT no_pasillo FROM estante_inteligente WHERE id_sucursal = %s", (sucursal,))
-        self.connection.commit()
+        self.connection_db_inventario.commit()
         pasillos = cur.fetchall()
         cur.close()
         return pasillos 
 
     def obtener_estantes(self, sucursal, pasillo):
-        cur = self.connection.cursor()
+        cur = self.connection_db_inventario.cursor()
         cur.execute("SELECT id_estante FROM estante_inteligente WHERE id_sucursal = %s AND no_pasillo = %s AND id_estante NOT IN (2, 10)", (sucursal, pasillo,))
-        self.connection.commit()
+        self.connection_db_inventario.commit()
         estantes = cur.fetchall()
         cur.close()
         return estantes
-
-    def realizar_pago(self, no_cuenta, id_cliente, banco, sucursal, cont_factura, total, hora):
-        if no_cuenta == 1:
-            cur = self.connection.cursor()
-            cur.execute("SELECT realizar_pago((SELECT no_cuenta FROM cuenta_programa_fidelidad WHERE id_cliente = %s), %s, %s, %s, %s, %s, %s, %s, %s)", (id_cliente, id_cliente, banco, sucursal, cont_factura, total, 0, total, hora,))
-            self.connection.commit()
-            cur.close()
-        else:
-            cur = self.connection.cursor()
-            cur.execute("SELECT realizar_pago(%s, %s, %s, %s, %s, %s, %s, %s, %s)", (0, id_cliente, id_cliente, banco, sucursal, cont_factura, total, 0, total, hora,))
-            self.connection.commit()
-            cur.close()
-
-    def insertar_detalle_factura(self, cont_factura, id_producto, cantidad, precio):
-        cur = self.connection.cursor()
-        cur.execute("INSERT INTO detalle_factura(id_factura, id_producto, cantidad, subtotal) VALUES (%s, %s, %s, %s)", (cont_factura, id_producto, cantidad, precio*int(''.join(map(str, cantidad))),))
-        self.connection.commit()
-        cur.close()
 
     def iniciar_sucursal(self):
         #se carga el json con la data de los clientes
@@ -228,12 +243,13 @@ class publicador:
         no_visita = 0
         cont_horas = 0
         horas = 0
+        entran_mas = 0
 
         #se establece la hora inicial en que empieza a funcionar
-        hora = datetime.datetime.now().replace(minute=0, second=0) 
+        hora = datetime.datetime.now()
 
         #se elige una cantidad random de personas que van a entrar 
-        cantidad = random.randint(1, 10)
+        cantidad = random.randint(30, 40)
         #aquí se guardan los indices de los clientes dentro de una sucursal (los que tienen en el json) para poder acceder a estos después
         indices = []
 
@@ -258,29 +274,35 @@ class publicador:
                 #se actualiza el contador cuando entra por primera vez
                 clientes[i]["contador"] += 1 
                 #se cuenta cuando pase una vuelta completa del for
-                if indices[len(indices)-1] == i:
+                if no_visita > 6:
                     cont_tiempo += 1
                     cont_horas += 1
                 #actualizamos el estado de la persona 
                 cliente_actual = json.dumps(clientes[i]["id_cliente"])
                 print("Cliente id:", cliente_actual, " Indice: ", i)
                 print("Indices: "+str(indices))
-                #aumentar contador de visitas 
-                no_visita += 1
                 #si el contador del cliente es igual a 1 es porque entro por primera vez
                 if clientes[i]["contador"] == 1:
+                    #aumentar contador de visitas 
+                    no_visita += 1
                     #se elige de manera aleatoria la sucursal en la que está 
                     sucursal = random.randint(1, 2)
                     clientes[i]["sucursal"] = sucursal
                     #la cámara capta su rostro y verifica si pertenece al programa de fidelidad 
                     if self.verificar_cliente_programa(clientes[i]["id_cliente"]) == True:
                         #si pertenece se cuenta su visita 
-                        hora = datetime.datetime.now().replace(minute=0, second=0) 
-                        self.guardar_visita(no_visita, 1, clientes[i]["id_cliente"], sucursal, hora)
+                        hora = datetime.datetime.now()
+                        if sucursal == 1:
+                            self.enviar_mensaje_visitas('sucursal1', no_visita, 1, clientes[i]["id_cliente"], sucursal, hora)
+                        else:
+                            self.enviar_mensaje_visitas('sucursal2', no_visita, 1, clientes[i]["id_cliente"], sucursal, hora)
                     else:
                         #si no pertenece se cuenta la visita de un desconocido 
-                        hora = datetime.datetime.now().replace(minute=0, second=0) 
-                        self.guardar_visita(no_visita, 0, 0, sucursal, hora)
+                        hora = datetime.datetime.now()
+                        if sucursal == 1:
+                            self.enviar_mensaje_visitas('sucursal1', no_visita, 0, 0, sucursal, hora)
+                        else:
+                            self.enviar_mensaje_visitas('sucursal2', no_visita, 0, 0, sucursal, hora)
                     #se inicializa el carrito donde guardaran los productos 
                     clientes[i]["carrito"] = []
                     #se elige de manera aleatoria si irá a un pasillo o a buscar un ticket para que lo atiendan el la charcutería
@@ -292,14 +314,26 @@ class publicador:
                 else: 
                     #si no es la primera vez que entra al supermercado se verifica si el cliente está en la cola para la charcutería 
                     sucursal = clientes[i]["sucursal"]
+                    horas += 1
+                    print("HORAS:"+str(horas))
                     if self.verificar_si_en_cola(clientes[i]["id_cliente"]) == True:
                         #si está en la cola se verifica si la alarma de su sensor se activó para que lo atiendan 
+                        if sucursal == 1:
+                            self.enviar_mensaje_sensor('sucursal1', clientes[i]["id_cliente"], clientes[i]["sucursal"])
+                        else:
+                            self.enviar_mensaje_sensor('sucursal2', clientes[i]["id_cliente"], clientes[i]["sucursal"])
                         if self.alarma_activada == clientes[i]["id_cliente"]:
                             #va a ser atendido en la charcutería
                             #se borra de la fila el cliente
-                            self.borrar_de_charcuteria(clientes[i]["id_cliente"])
+                            if sucursal == 1:
+                                self.enviar_mensaje_charcuteria('sucursal1', 'borrar', clientes[i]["id_cliente"])
+                            else:
+                                self.enviar_mensaje_charcuteria('sucursal2', 'borrar', clientes[i]["id_cliente"])
                             #actualizar fila 
-                            self.actualizar_fila(clientes[i]["id_cliente"])
+                            if sucursal == 1:
+                                self.enviar_mensaje_charcuteria('sucursal1', 'update', clientes[i]["id_cliente"])
+                            else:
+                                self.enviar_mensaje_charcuteria('sucursal2', 'update', clientes[i]["id_cliente"])
                             #el cliente elige el producto de la charcutería 
                             if sucursal == 1:
                                 estante = 2
@@ -312,35 +346,61 @@ class publicador:
                             id_producto = self.get_id_producto(producto)
                             #se busca cuánta cantidad restante queda de ese producto 
                             cant = self.obtener_cantidad_restante(id_producto)
+                            print(cant)
                             #si la cantidad es igual a cero el producto se acabó
                             if cant == 0:
                                 print("El producto se acabó")
                             else:
                                 #se elige de manera alteatoria cuánta cantidad de ese producto agarrá
-                                cantidad = random.randint(1, cant)
+                                cantidad = random.randint(1, 10)
                                 print("El cliente compra "+str(cantidad)+" de este producto")
                                 #se busca el precio de ese producto
                                 precio = self.obtener_precio(id_producto)
                                 #se mete el producto en su carrito
+                                for k in range(0, len(clientes[i]["carrito"])):
+                                    if producto == clientes[i]["carrito"][k]["nombre"]:
+                                        print("ËNTRO")
+                                        cantidad = int(clientes[i]["carrito"][k]["cantidad"]) + cantidad
+                                        print("VALOR: "+str(k))
+                                        clientes[i]["carrito"].remove(clientes[i]["carrito"][k])
+                                        break
                                 clientes[i]["carrito"].append({
                                     "nombre": producto,
                                     "cantidad": str(cantidad),
                                     "id_producto": id_producto,
-                                    "precio": precio
+                                    "precio": str(precio)
                                 })
                                 id_estante = int(''.join(map(str, estante)))
                                 #se publica el mensaje en el canal correspondiente para indicar que se ha quitado cantidad de un producto en un estante 
                                 if sucursal == 1:
-                                    hora = datetime.datetime.now().replace(minute=0, second=0) 
+                                    hora = datetime.datetime.now()
+                                    if cont_horas > 1:
+                                        print("AUMENTO HORAS")
+                                        hora = hora + datetime.timedelta(hours=horas)
+                                        if day >= 1:
+                                            hora = hora + datetime.timedelta(days=day)
                                     self.enviar_mensaje('sucursal1', id_producto, cantidad, id_estante, hora)
                                 else:
-                                    hora = datetime.datetime.now().replace(minute=0, second=0) 
+                                    hora = datetime.datetime.now() 
+                                    if cont_horas > 1:
+                                        print("AUMENTO HORAS")
+                                        hora = hora + datetime.timedelta(hours=horas)
+                                        if day >= 1:
+                                            hora = hora + datetime.timedelta(days=day)
                                     self.enviar_mensaje('sucursal2', id_producto, cantidad, id_estante, hora)
                                 time.sleep(3)
                                 #si la alarma de un estante se activó los empleados vuelven a llenar el estante 
                                 if self.activar_alarma_estante == True:
-                                    hora = datetime.datetime.now().replace(minute=0, second=0) 
-                                    self.llenar_estante(id_estante, hora)
+                                    hora = datetime.datetime.now()
+                                    if cont_horas > 1:
+                                        print("AUMENTO HORAS")
+                                        hora = hora + datetime.timedelta(hours=horas)
+                                        if day >= 1:
+                                            hora = hora + datetime.timedelta(days=day)
+                                    if sucursal == 1:
+                                        self.enviar_mensaje_llenar('sucursal1', id_estante, hora)
+                                    else:
+                                        self.enviar_mensaje_llenar('sucursal2', id_estante, hora)
                                     self.activar_alarma_estante = False
                         else:
                             #si todavía no es su turno de va a otro pasillo 
@@ -353,11 +413,20 @@ class publicador:
                     no_fila += 1
                     #si no está registrado se guarda su información en la bd
                     if self.verificar_cliente(clientes[i]["id_cliente"]) == False:
-                        self.insertar_cliente(clientes[i]["id_cliente"], clientes[i]["nombre"], clientes[i]["apellido"], clientes[i]["telefono"], clientes[i]["direccion"])
-                        self.insertar_en_fila(clientes[i]["id_cliente"], no_fila, clientes[i]["sucursal"])
+                        if sucursal == 1:
+                            self.enviar_mensaje_clientes('sucursal1', clientes[i]["id_cliente"], clientes[i]["nombre"], clientes[i]["apellido"], clientes[i]["telefono"], clientes[i]["direccion"])
+                        else:
+                            self.enviar_mensaje_clientes('sucursal2', clientes[i]["id_cliente"], clientes[i]["nombre"], clientes[i]["apellido"], clientes[i]["telefono"], clientes[i]["direccion"])
+                        if sucursal == 1:
+                            self.enviar_mensaje_fila('sucursal1', 'insertar', no_fila, clientes[i]["id_cliente"], clientes[i]["sucursal"])
+                        else:
+                            self.enviar_mensaje_fila('sucursal2', 'insertar', no_fila, clientes[i]["id_cliente"], clientes[i]["sucursal"])
                     #si está registrado se procede a guardarlo en la fila
                     else:
-                        self.insertar_en_fila(clientes[i]["id_cliente"], no_fila, clientes[i]["sucursal"])
+                        if sucursal == 1:
+                            self.enviar_mensaje_fila('sucursal1', 'insertar', no_fila, clientes[i]["id_cliente"], clientes[i]["sucursal"])
+                        else:
+                            self.enviar_mensaje_fila('sucursal2', 'insertar', no_fila, clientes[i]["id_cliente"], clientes[i]["sucursal"])
                     #se publica el mensaje en el canal correspondiente para indicar que se agregó otro cliente a la cola
                     if sucursal == 1:
                         self.enviar_mensaje_sensor('sucursal1', clientes[i]["id_cliente"], clientes[i]["sucursal"])
@@ -374,49 +443,75 @@ class publicador:
                     estante = random.choice(self.obtener_estantes(sucursal, pasillo))
                     print("El cliente se dirige al estante "+str(estante))
                     #se elige de manera alteatoria que producto de ese estante agarrará
-                    producto = random.choice(self.elegir_producto(id_estante))
+                    producto = random.choice(self.elegir_producto(estante))
                     print("El cliente elige el producto: "+str(producto))
                     id_producto = self.get_id_producto(producto)
                     #se elige de manera alteatoria cuánta cantidad de ese producto agarrá
                     cant = self.obtener_cantidad_restante(id_producto)
+                    print(cant)
                     #si la cantidad es 0 el producto se acabó
                     if cant == 0:
                         print("El producto se acabó")
                     else:
                         #se elige el manera aleatoria la cantidad que agarrará
-                        cantidad = random.randint(1, cant)
+                        cantidad = random.randint(1, 10)
                         print("El cliente agarra "+str(cantidad)+" de este producto")
                         #se elige de manera aleatoria si el cliente dejará el producto o lo comprará
-                        lista = list(["lo compra", "lo deja"])
+                        lista = list(["lo compra"])
                         decision = self.pick_choice(lista)
                         print("El cliente "+str(decision))
                         if(decision == "lo compra"):
                             #se busca el precio del producto
                             precio = self.obtener_precio(id_producto)
+                            for k in range(0, len(clientes[i]["carrito"])):
+                                if producto == clientes[i]["carrito"][k]["nombre"]:
+                                    print("ENTRO")
+                                    cantidad = int(clientes[i]["carrito"][k]["cantidad"]) + cantidad
+                                    print("VALOR: "+str(k))
+                                    clientes[i]["carrito"].remove(clientes[i]["carrito"][k])
+                                    break
                             clientes[i]["carrito"].append({
                                 "nombre": producto,
                                 "cantidad": str(cantidad),
                                 "id_producto": id_producto,
-                                "precio": precio
+                                "precio": str(precio)
                             })
                             #cuando se agarra un producto de un estante se hace un publish en el canal 
                             #para verificar que no queda el 20% de los productos 
                             #si queda el 20% se activa una alarma y los empleados lo vuelven a llenar
                             id_estante = int(''.join(map(str, estante)))
                             if sucursal == 1:
-                                hora = datetime.datetime.now().replace(minute=0, second=0) 
+                                hora = datetime.datetime.now() 
+                                if cont_horas > 1:
+                                        print("AUMENTO HORAS")
+                                        hora = hora + datetime.timedelta(hours=horas)
+                                        if day >= 1:
+                                            hora = hora + datetime.timedelta(days=day)
                                 self.enviar_mensaje('sucursal1', id_producto, cantidad, id_estante, hora)
                             else:
-                                hora = datetime.datetime.now().replace(minute=0, second=0) 
+                                hora = datetime.datetime.now()
+                                if cont_horas > 1:
+                                        print("AUMENTO HORAS")
+                                        hora = hora + datetime.timedelta(hours=horas)
+                                        if day >= 1:
+                                            hora = hora + datetime.timedelta(days=day)
                                 self.enviar_mensaje('sucursal2', id_producto, cantidad, id_estante, hora)
                             time.sleep(3)
                             if self.activar_alarma_estante == True:
-                                hora = datetime.datetime.now().replace(minute=0, second=0) 
-                                self.llenar_estante(id_estante, hora)
+                                hora = datetime.datetime.now()
+                                if cont_horas > 1:
+                                        print("AUMENTO HORAS")
+                                        hora = hora + datetime.timedelta(hours=horas)
+                                        if day >= 1:
+                                            hora = hora + datetime.timedelta(days=day)
+                                if sucursal == 1:
+                                    self.enviar_mensaje_llenar('sucursal1', id_estante, hora)
+                                else:
+                                    self.enviar_mensaje_llenar('sucursal2', id_estante, hora)
                                 self.activar_alarma_estante = False
                 #se elige de manera aleatoria si el cliente sigue viendo más cosas o va a pagar
                 if len(clientes[i]["carrito"]) > 0:
-                    lista = list(["sigue viendo", "va a pagar"])
+                    lista = list(["va a pagar"])
                     decision = self.pick_choice(lista)
                     print("El cliente "+str(decision))
                     clientes[i]["currently"] = decision
@@ -428,67 +523,109 @@ class publicador:
                 #si el cliente se va se quita su indice del array
                 if clientes[i]["currently"] == "se va":
                     indices.remove(i)
+                    if len(indices) == 0:
+                        entran_mas += 1
                     if self.verificar_si_en_cola(clientes[i]["id_cliente"]) == True:
                         #se borra de la fila el cliente
-                        self.borrar_de_charcuteria(clientes[i]["id_cliente"])
+                        if sucursal == 1:
+                            self.enviar_mensaje_charcuteria('sucursal1', 'borrar', clientes[i]["id_cliente"])
+                        else:
+                            self.enviar_mensaje_charcuteria('sucursal2', 'borrar', clientes[i]["id_cliente"])
                         #actualizar fila 
-                        self.actualizar_fila(clientes[i]["id_cliente"])
+                        if sucursal == 1:
+                            self.enviar_mensaje_charcuteria('sucursal1', 'update', clientes[i]["id_cliente"])
+                        else:
+                            self.enviar_mensaje_charcuteria('sucursal2', 'update', clientes[i]["id_cliente"])
                 #si el cliente va a pagar se hace todos el proceso de pago
                 if clientes[i]["currently"] == "va a pagar":
                     total = 0 
-                    cont_factura += 1
+                    indices.remove(i)
+                    if len(indices) == 0:
+                        entran_mas += 1
                     #se verifica si el cliente está registrado
-                    if self.verificar_cliente(clientes[i]["id_cliente"]) == False:
-                        #si no está registrado se registra
-                        self.insertar_cliente(clientes[i]["id_cliente"], clientes[i]["nombre"], clientes[i]["apellido"], clientes[i]["telefono"], clientes[i]["direccion"])
-                        #se calcula el total a pagar
-                        for index in range(0, len(clientes[i]["carrito"])):   
-                            precio = self.obtener_precio((clientes[i]["carrito"][index]["id_producto"]))
-                            total += int(''.join(map(str, clientes[i]["carrito"][index]["cantidad"])))*precio
-                        print("El total a pagar es: "+str(total))
-                        #se verifica si pertenece al programa de fidelidad
-                        if self.verificar_cliente_programa(clientes[i]["id_cliente"]) == True:
-                            lista = list(["Banesco", "Provincial", "Mercantil"])
-                            banco = self.pick_choice(lista)
-                            hora = datetime.datetime.now().replace(minute=0, second=0) 
-                            self.realizar_pago(1, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
-                        else:
-                            lista = list(["Banesco", "Provincial", "Mercantil"])
-                            banco = self.pick_choice(lista)
-                            hora = datetime.datetime.now().replace(minute=0, second=0) 
-                            self.realizar_pago(0, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
-                        #se registran todos los detalles de la factura
-                        for index in range(0, len(clientes[i]["carrito"])):   
-                            self.insertar_detalle_factura(cont_factura, clientes[i]["carrito"][index]["id_producto"], clientes[i]["carrito"][index]["cantidad"], clientes[i]["carrito"][index]["precio"])
-                    else:
+                    if self.verificar_cliente(clientes[i]["id_cliente"]) == True:
                         #si es cliente regular 
+                        cont_factura += 1
+                        print("FACTURA: "+str(cont_factura))
                         for index in range(0, len(clientes[i]["carrito"])):   
                             #se calcula el total
                             precio = self.obtener_precio((clientes[i]["carrito"][index]["id_producto"]))
-                            total += int(''.join(map(str, clientes[i]["carrito"][index]["cantidad"])))*precio
+                            total += int(clientes[i]["carrito"][index]["cantidad"])*precio
                         print("El total a pagar es: "+str(total))
                         #se verifica si pertenece al programa
-                        if self.verificar_cliente(clientes[i]["id_cliente"]) == True:
-                            lista = list(["Banesco", "Provincial", "Mercantil"])
-                            banco = self.pick_choice(lista)
-                            hora = datetime.datetime.now().replace(minute=0, second=0) 
-                            self.realizar_pago(1, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
+                        lista = list(["Banesco", "Provincial", "Mercantil"])
+                        banco = self.pick_choice(lista)
+                        hora = datetime.datetime.now()
+                        if cont_horas > 1:
+                            print("AUMENTO HORAS")
+                            hora = hora + datetime.timedelta(hours=horas)
+                            if day >= 1:
+                                hora = hora + datetime.timedelta(days=day)
+                        if self.verificar_cliente_programa(clientes[i]["id_cliente"]) == True:
+                            num = 1
                         else:
-                            lista = list(["Banesco", "Provincial", "Mercantil"])
-                            banco = self.pick_choice(lista)
-                            hora = datetime.datetime.now().replace(minute=0, second=0) 
-                            self.realizar_pago(0, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
+                            num = 0
+                        if sucursal == 1:
+                            self.enviar_mensaje_factura('sucursal1', num, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
+                        else:
+                            self.enviar_mensaje_factura('sucursal2', num, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
+                        time.sleep(3)
+                        if sucursal == 1:
+                            for index in range(0, len(clientes[i]["carrito"])):  
+                                self.enviar_mensaje_detalles('sucursal1', cont_factura, clientes[i]["carrito"][index]["id_producto"], clientes[i]["carrito"][index]["cantidad"], clientes[i]["carrito"][index]["precio"])
+                        else:
+                            for index in range(0, len(clientes[i]["carrito"])):  
+                                self.enviar_mensaje_detalles('sucursal2', cont_factura, clientes[i]["carrito"][index]["id_producto"], clientes[i]["carrito"][index]["cantidad"], clientes[i]["carrito"][index]["precio"])
+                        time.sleep(3)
+                    else:
+                        cont_factura += 1
+                        print("FACTURA: "+str(cont_factura))
+                        #si no está registrado se registra
+                        if sucursal == 1:
+                            self.enviar_mensaje_clientes('sucursal1', clientes[i]["id_cliente"], clientes[i]["nombre"], clientes[i]["apellido"], clientes[i]["telefono"], clientes[i]["direccion"])
+                        else:
+                            self.enviar_mensaje_clientes('sucursal2', clientes[i]["id_cliente"], clientes[i]["nombre"], clientes[i]["apellido"], clientes[i]["telefono"], clientes[i]["direccion"])
+                        #se calcula el total a pagar
                         for index in range(0, len(clientes[i]["carrito"])):   
-                            self.insertar_detalle_factura(cont_factura, clientes[i]["carrito"][index]["id_producto"], clientes[i]["carrito"][index]["cantidad"], clientes[i]["carrito"][index]["precio"])
-                if cont_tiempo == 1:
+                            precio = self.obtener_precio((clientes[i]["carrito"][index]["id_producto"]))
+                            total += int(clientes[i]["carrito"][index]["cantidad"])*precio
+                        print("El total a pagar es: "+str(total))
+                        #se verifica si pertenece al programa de fidelidad
+                        lista = list(["Banesco", "Provincial", "Mercantil"])
+                        banco = self.pick_choice(lista)
+                        hora = datetime.datetime.now() 
+                        if cont_horas > 1:
+                            print("AUMENTO HORAS")
+                            hora = hora + datetime.timedelta(hours=1)
+                            if day >= 1:
+                                hora = hora + datetime.timedelta(days=day)
+                        if self.verificar_cliente_programa(clientes[i]["id_cliente"]) == True:
+                            num = 1
+                        else:
+                            num = 0
+                        if sucursal == 1:
+                            self.enviar_mensaje_factura('sucursal1', num, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
+                        else:
+                            self.enviar_mensaje_factura('sucursal1', num, clientes[i]["id_cliente"], banco, sucursal, cont_factura, total, hora)
+                        time.sleep(3)
+                        if sucursal == 1:
+                            for index in range(0, len(clientes[i]["carrito"])):  
+                                self.enviar_mensaje_detalles('sucursal1', cont_factura, clientes[i]["carrito"][index]["id_producto"], clientes[i]["carrito"][index]["cantidad"], clientes[i]["carrito"][index]["precio"])
+                        else:
+                            for index in range(0, len(clientes[i]["carrito"])):  
+                                self.enviar_mensaje_detalles('sucursal2', cont_factura, clientes[i]["carrito"][index]["id_producto"], clientes[i]["carrito"][index]["cantidad"], clientes[i]["carrito"][index]["precio"])
+                        time.sleep(3)
+                if entran_mas == 1:
                     #decidir si entrarán más clientes
-                    lista = list(["entran más clientes", "pues no mi ciela"])
+                    day += 1
+                    entran_mas = 0
+                    lista = list(["entran más clientes"])
                     decision = self.pick_choice(lista)
                     cont_tiempo = 0
                     print(decision)
                     if(decision == "entran más clientes"):
                         #se eligen varios varios valores aleatorios según la cantidad de clientes que va a entrar 
-                        cantidad = random.randint(1, 10)
+                        cantidad = random.randint(30, 40)
                         print("Cantidad: "+str(cantidad))
                         indices_aux = []
                         values = list(range(0, len(clientes)))#cantidad de clientes en total
@@ -505,12 +642,7 @@ class publicador:
                             indices_aux.append(r1)
                         print("Entran los siguientes indices de clientes: "+str(indices))
                 #si ya pasaron dos vueltas en el for se aumenta una hora 
-                if cont_horas == 2:
-                    hora = hora + datetime.timedelta(hours=1)
-                    horas += 1
-                    #si pasaron 24 horas se aumenta el contador de días 
-                    if horas == 24:
-                        day += 1
+                print("DIAS: "+str(day))
                 time.sleep(3)
 
             
